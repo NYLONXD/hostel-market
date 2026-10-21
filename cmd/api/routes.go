@@ -11,15 +11,18 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 
 	"hostelmarket/internal/auth"
+	"hostelmarket/internal/chat"
 	"hostelmarket/internal/config"
 	"hostelmarket/internal/listings"
 	"hostelmarket/internal/media"
+	"hostelmarket/internal/orders"
 	"hostelmarket/internal/platform/cache"
 	"hostelmarket/internal/platform/clock"
 	"hostelmarket/internal/platform/db"
 	"hostelmarket/internal/platform/httpx"
 	"hostelmarket/internal/platform/jobs"
 	"hostelmarket/internal/platform/ratelimit"
+	"hostelmarket/internal/platform/ws"
 	"hostelmarket/internal/users"
 )
 
@@ -38,6 +41,7 @@ type deps struct {
 	rdb   *goredis.Client
 	db    *db.Router
 	jobs  *jobs.Client
+	hub   *ws.Hub
 	clock clock.Clock
 	log   *slog.Logger
 }
@@ -49,6 +53,9 @@ type modules struct {
 	auth     *auth.Service
 	media    *media.Service
 	listings *listings.Service
+	orders   *orders.Service
+	chat     *chat.Service
+	gateway  *ws.Gateway
 }
 
 type limits struct {
@@ -93,12 +100,20 @@ func buildModules(d deps) (*modules, error) {
 
 	feed := cache.NewVersioned(d.rdb, d.cfg.Cache.FeedTTL, feedReinvalidate)
 	m.listings = listings.NewService(d.db, m.users, m.media, feed, d.clock)
+
+	m.orders = orders.NewService(d.db, m.listings, m.users, d.jobs, d.hub, d.clock, d.cfg.Market.OrderRequestTTL)
+	m.listings.OnRemove(m.orders)
+
+	m.chat = chat.NewService(d.db, m.listings, m.users, d.hub, m.limits.message)
+	m.gateway = ws.NewGateway(d.hub, d.cfg.WSOriginPatterns, d.log)
+	chat.NewHandler(m.chat).RegisterWS(m.gateway)
 	return m, nil
 }
 
 // registerJobs attaches every module's background handlers to the worker.
-func registerJobs(w *jobs.Worker, m *modules) {
+func registerJobs(w *jobs.Worker, m *modules) error {
 	w.Handle(media.TaskDeleteAssets, m.media.HandleDeleteTask)
+	return m.orders.RegisterJobs(w)
 }
 
 func newHTTPHandler(d deps, m *modules) http.Handler {
@@ -122,8 +137,14 @@ func newHTTPHandler(d deps, m *modules) http.Handler {
 		r.Use(auth.Identify(m.auth, auth.FromHeader))
 		r.Use(m.limits.global.Middleware(ratelimit.ByUserOrIP))
 
-		// REST endpoints. (WebSocket routes mount outside this group: a request
-		// timeout would cut long-lived connections.)
+		// WebSocket: outside the REST timeout group. Browsers can't set headers on the
+		// upgrade, so the token may also come as ?access_token=.
+		r.With(auth.Identify(m.auth, auth.FromHeaderOrQuery), auth.RequireUser).
+			Get("/ws", func(w http.ResponseWriter, r *http.Request) {
+				p, _ := auth.PrincipalFrom(r.Context())
+				m.gateway.Serve(w, r, p.UserID, p.ExpiresAt)
+			})
+
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.Timeout(restTimeout))
 
@@ -134,6 +155,8 @@ func newHTTPHandler(d deps, m *modules) http.Handler {
 				users.NewHandler(m.users).Routes(r)
 				media.NewHandler(m.media, m.users).Routes(r)
 				listings.NewHandler(m.listings, m.users, nil, d.clock).Routes(r)
+				orders.NewHandler(m.orders).Routes(r)
+				chat.NewHandler(m.chat).Routes(r)
 			})
 		})
 	})

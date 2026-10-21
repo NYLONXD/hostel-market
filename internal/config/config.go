@@ -32,6 +32,10 @@ type Config struct {
 	// TrustProxyHeaders makes X-Forwarded-For / X-Real-IP the client IP. Enable only
 	// behind a proxy that overwrites them, or clients can spoof their IP.
 	TrustProxyHeaders bool
+	// WSOriginPatterns are extra browser origins allowed to open WebSockets
+	// (host patterns like "app.example.com" or "*.example.com"). Same-origin and
+	// native clients that send no Origin header are always allowed.
+	WSOriginPatterns []string
 
 	DB       DBConfig
 	RedisURL string
@@ -133,6 +137,7 @@ func load(getenv func(string) string) (Config, error) {
 		RunWorkers:      r.bool("RUN_WORKERS", true),
 
 		TrustProxyHeaders: r.bool("TRUST_PROXY_HEADERS", false),
+		WSOriginPatterns:  r.list("WS_ALLOWED_ORIGINS"),
 		DB: DBConfig{
 			PrimaryURL: r.required("DATABASE_URL_PRIMARY"),
 			ReplicaURL: r.str("DATABASE_URL_REPLICA", ""),

@@ -17,6 +17,12 @@ type Enqueuer interface {
 	Enqueue(ctx context.Context, task *asynq.Task, opts ...asynq.Option) error
 }
 
+// Registry is how modules register their task handlers and periodic tasks.
+type Registry interface {
+	Handle(taskType string, h func(context.Context, *asynq.Task) error)
+	Every(spec string, task *asynq.Task, opts ...asynq.Option) error
+}
+
 type Client struct {
 	c *asynq.Client
 }

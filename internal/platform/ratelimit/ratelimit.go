@@ -97,6 +97,12 @@ func (p *Policy) Check(ctx context.Context, key string) (Result, error) {
 	return res, nil
 }
 
+// Enforce is Check without the result, for callers that only need allow/deny.
+func (p *Policy) Enforce(ctx context.Context, key string) error {
+	_, err := p.Check(ctx, key)
+	return err
+}
+
 // KeyFunc picks the bucket for a request; "" skips limiting.
 type KeyFunc func(r *http.Request) string
 

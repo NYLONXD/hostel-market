@@ -19,6 +19,7 @@ import (
 	"hostelmarket/internal/platform/jobs"
 	"hostelmarket/internal/platform/logx"
 	platformredis "hostelmarket/internal/platform/redis"
+	"hostelmarket/internal/platform/ws"
 )
 
 func main() {
@@ -65,12 +66,17 @@ func run() error {
 	jobClient := jobs.NewClient(rdb)
 	defer jobClient.Close()
 
+	hub := ws.NewHub(ctx, rdb, logger)
+	defer hub.Close()
+	go hub.Run(ctx)
+
 	d := deps{
 		cfg:   cfg,
 		pools: pools,
 		rdb:   rdb,
 		db:    db.NewRouter(pools, db.NewRedisRecentWrites(rdb, cfg.Cache.RecentWriteTTL), logger),
 		jobs:  jobClient,
+		hub:   hub,
 		clock: clock.System{},
 		log:   logger,
 	}
@@ -82,7 +88,9 @@ func run() error {
 	var worker *jobs.Worker
 	if cfg.RunWorkers {
 		worker = jobs.NewWorker(rdb, cfg.WorkerConcurrency, logger)
-		registerJobs(worker, mods)
+		if err := registerJobs(worker, mods); err != nil {
+			return err
+		}
 		if err := worker.Start(); err != nil {
 			return err
 		}
@@ -117,7 +125,9 @@ func run() error {
 	logger.Info("shutting down", "timeout", cfg.ShutdownTimeout)
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancel()
-	// Stop taking requests first, then let in-flight jobs finish, then close pools (defers).
+	// Stop taking requests first (and tell WebSocket clients to reconnect elsewhere),
+	// then let in-flight jobs finish, then close pools (defers).
+	mods.gateway.Shutdown()
 	httpErr := srv.Shutdown(shutdownCtx)
 	if worker != nil {
 		worker.Shutdown()
