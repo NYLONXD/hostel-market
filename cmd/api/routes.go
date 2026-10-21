@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	goredis "github.com/redis/go-redis/v9"
 
+	"hostelmarket/internal/admin"
 	"hostelmarket/internal/auth"
 	"hostelmarket/internal/bidding"
 	"hostelmarket/internal/chat"
@@ -17,6 +18,7 @@ import (
 	"hostelmarket/internal/listings"
 	"hostelmarket/internal/media"
 	"hostelmarket/internal/orders"
+	"hostelmarket/internal/payments"
 	"hostelmarket/internal/platform/cache"
 	"hostelmarket/internal/platform/clock"
 	"hostelmarket/internal/platform/db"
@@ -56,6 +58,7 @@ type modules struct {
 	listings *listings.Service
 	orders   *orders.Service
 	bidding  *bidding.Service
+	payments *payments.Service
 	chat     *chat.Service
 	gateway  *ws.Gateway
 }
@@ -120,6 +123,19 @@ func buildModules(d deps) (*modules, error) {
 	})
 	m.listings.SetAuctionHooks(m.bidding)
 
+	var provider payments.Provider
+	switch d.cfg.Payments.Provider {
+	case config.ProviderUPILink:
+		provider = payments.UPILinkProvider{PayeeVPA: d.cfg.Payments.PlatformUPIID, PayeeName: d.cfg.Payments.PlatformUPIName}
+	default:
+		provider = payments.NewMockProvider(d.cfg.Payments.MockWebhookSecret, d.clock)
+	}
+	m.payments = payments.NewService(payments.Options{
+		DB: d.db, Orders: m.orders, Provider: provider, Jobs: d.jobs, Notify: d.hub, Clock: d.clock,
+		PendingGrace: mk.PaymentPendingGrace, WebhookBaseURL: d.cfg.PublicBaseURL,
+	})
+	m.orders.SetPaymentGuard(m.payments)
+
 	m.chat = chat.NewService(d.db, m.listings, m.users, d.hub, m.limits.message)
 	m.gateway = ws.NewGateway(d.hub, d.cfg.WSOriginPatterns, d.log)
 	chat.NewHandler(m.chat).RegisterWS(m.gateway)
@@ -130,6 +146,7 @@ func buildModules(d deps) (*modules, error) {
 // registerJobs attaches every module's background handlers to the worker.
 func registerJobs(w *jobs.Worker, m *modules) error {
 	w.Handle(media.TaskDeleteAssets, m.media.HandleDeleteTask)
+	m.payments.RegisterJobs(w)
 	if err := m.orders.RegisterJobs(w); err != nil {
 		return err
 	}
@@ -169,6 +186,8 @@ func newHTTPHandler(d deps, m *modules) http.Handler {
 			r.Use(middleware.Timeout(restTimeout))
 
 			auth.NewHandler(m.auth, m.limits.login, m.limits.register).Routes(r)
+			payHandler := payments.NewHandler(m.payments)
+			payHandler.WebhookRoutes(r) // authenticated by provider signature, not JWT
 
 			r.Group(func(r chi.Router) {
 				r.Use(auth.RequireUser)
@@ -177,7 +196,16 @@ func newHTTPHandler(d deps, m *modules) http.Handler {
 				listings.NewHandler(m.listings, m.users, m.bidding, d.clock).Routes(r)
 				bidding.NewHandler(m.bidding, m.limits.bid).Routes(r)
 				orders.NewHandler(m.orders).Routes(r)
+				payHandler.Routes(r)
 				chat.NewHandler(m.chat).Routes(r)
+				if d.cfg.IsDevelopment() && d.cfg.Payments.Provider == config.ProviderMock {
+					payHandler.DevRoutes(r)
+				}
+			})
+
+			r.Group(func(r chi.Router) {
+				r.Use(auth.RequireUser, auth.RequireRole(m.users, users.RoleAdmin))
+				admin.NewHandler(m.users, m.listings, m.payments).Routes(r)
 			})
 		})
 	})
