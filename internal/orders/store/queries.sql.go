@@ -201,6 +201,38 @@ func (q *Queries) InsertOrder(ctx context.Context, arg InsertOrderParams) (Order
 	return i, err
 }
 
+const listDefaultedBuyers = `-- name: ListDefaultedBuyers :many
+SELECT DISTINCT buyer_id FROM orders
+WHERE listing_id = $1 AND auction_round = $2 AND kind = 'auction' AND status = 'expired'
+`
+
+type ListDefaultedBuyersParams struct {
+	ListingID    uuid.UUID
+	AuctionRound *int32
+}
+
+// Buyers whose auction win for this round expired unpaid; they are skipped when the
+// item is re-offered.
+func (q *Queries) ListDefaultedBuyers(ctx context.Context, arg ListDefaultedBuyersParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listDefaultedBuyers, arg.ListingID, arg.AuctionRound)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var buyer_id uuid.UUID
+		if err := rows.Scan(&buyer_id); err != nil {
+			return nil, err
+		}
+		items = append(items, buyer_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listOrdersForUser = `-- name: ListOrdersForUser :many
 SELECT id, listing_id, buyer_id, seller_id, kind, status, price_paise, platform_fee_bps, platform_fee_paise, seller_payout_paise, payment_method, auction_round, buyer_note, request_expires_at, payment_due_at, accepted_at, paid_at, handed_over_at, completed_at, closed_at, close_reason, created_at, updated_at, winning_bid_id FROM orders
 WHERE (($1::boolean AND buyer_id = $2)
@@ -268,6 +300,33 @@ func (q *Queries) ListOrdersForUser(ctx context.Context, arg ListOrdersForUserPa
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOverduePayments = `-- name: ListOverduePayments :many
+SELECT id FROM orders
+WHERE status = 'awaiting_payment' AND kind = 'auction' AND payment_due_at <= now()
+ORDER BY payment_due_at
+LIMIT 200
+`
+
+func (q *Queries) ListOverduePayments(ctx context.Context) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listOverduePayments)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

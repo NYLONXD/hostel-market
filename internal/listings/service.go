@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -371,6 +372,60 @@ func (s *Service) SetStatus(ctx context.Context, tx db.DBTX, id uuid.UUID, statu
 		return Listing{}, fmt.Errorf("set listing status: %w", err)
 	}
 	return fromRow(row, nil), nil
+}
+
+// ApplyBid records an accepted bid (current price, count, first-bid lock, extended end
+// time) inside the caller's transaction, which must hold Lock.
+func (s *Service) ApplyBid(ctx context.Context, tx db.DBTX, id uuid.UUID, amount int64, endsAt time.Time) (Listing, error) {
+	row, err := store.New(tx).ApplyBid(ctx, store.ApplyBidParams{ID: id, Amount: amount, EndsAt: endsAt})
+	if err != nil {
+		return Listing{}, fmt.Errorf("apply bid: %w", err)
+	}
+	return fromRow(row, nil), nil
+}
+
+// CloseAuctionRound stamps auction_closed_at; it reports false if the round was
+// already closed (making the close job idempotent).
+func (s *Service) CloseAuctionRound(ctx context.Context, tx db.DBTX, id uuid.UUID) (Listing, bool, error) {
+	row, err := store.New(tx).CloseAuctionRound(ctx, id)
+	if db.IsNoRows(err) {
+		return Listing{}, false, nil
+	}
+	if err != nil {
+		return Listing{}, false, fmt.Errorf("close auction round: %w", err)
+	}
+	return fromRow(row, nil), true, nil
+}
+
+// OpenAuctions lists running auctions from the primary (startup rebuild, sweeps).
+func (s *Service) OpenAuctions(ctx context.Context, limit int32) ([]Listing, error) {
+	rows, err := store.New(s.db.Reader(ctx, db.Strong)).ListOpenAuctions(ctx, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list open auctions: %w", err)
+	}
+	out := make([]Listing, len(rows))
+	for i, r := range rows {
+		out[i] = fromRow(r, nil)
+	}
+	return out, nil
+}
+
+// DueAuction identifies an auction round whose end time has passed.
+type DueAuction struct {
+	ID    uuid.UUID
+	Round int32
+}
+
+func (s *Service) DueAuctions(ctx context.Context) ([]DueAuction, error) {
+	rows, err := store.New(s.db.Reader(ctx, db.Strong)).ListDueAuctions(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list due auctions: %w", err)
+	}
+	out := make([]DueAuction, len(rows))
+	for i, r := range rows {
+		out[i] = DueAuction{ID: r.ID, Round: r.AuctionRound}
+	}
+	return out, nil
 }
 
 // FeedChanged invalidates the cached feed of a hostel.

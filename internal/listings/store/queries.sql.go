@@ -13,6 +13,57 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const applyBid = `-- name: ApplyBid :one
+UPDATE listings SET
+  current_bid_paise = GREATEST(COALESCE(current_bid_paise, 0), $1::bigint),
+  bid_count         = bid_count + 1,
+  first_bid_at      = COALESCE(first_bid_at, now()),
+  bid_ends_at       = GREATEST(bid_ends_at, $2::timestamptz)
+WHERE id = $3
+RETURNING id, seller_id, hostel, title, description, category, condition, status, bidding_enabled, price_paise, starting_price_paise, min_increment_paise, bid_ends_at, auction_round, auction_closed_at, first_bid_at, current_bid_paise, bid_count, display_price_paise, available_from, available_until, allowed_block, allowed_year, created_at, updated_at, removed_at
+`
+
+type ApplyBidParams struct {
+	Amount int64
+	EndsAt time.Time
+	ID     uuid.UUID
+}
+
+// Records an accepted bid on the listing (caller holds the row lock).
+func (q *Queries) ApplyBid(ctx context.Context, arg ApplyBidParams) (Listing, error) {
+	row := q.db.QueryRow(ctx, applyBid, arg.Amount, arg.EndsAt, arg.ID)
+	var i Listing
+	err := row.Scan(
+		&i.ID,
+		&i.SellerID,
+		&i.Hostel,
+		&i.Title,
+		&i.Description,
+		&i.Category,
+		&i.Condition,
+		&i.Status,
+		&i.BiddingEnabled,
+		&i.PricePaise,
+		&i.StartingPricePaise,
+		&i.MinIncrementPaise,
+		&i.BidEndsAt,
+		&i.AuctionRound,
+		&i.AuctionClosedAt,
+		&i.FirstBidAt,
+		&i.CurrentBidPaise,
+		&i.BidCount,
+		&i.DisplayPricePaise,
+		&i.AvailableFrom,
+		&i.AvailableUntil,
+		&i.AllowedBlock,
+		&i.AllowedYear,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.RemovedAt,
+	)
+	return i, err
+}
+
 const browseNewest = `-- name: BrowseNewest :many
 
 SELECT l.id, l.seller_id, l.hostel, l.title, l.description, l.category, l.condition, l.status, l.bidding_enabled, l.price_paise, l.starting_price_paise, l.min_increment_paise, l.bid_ends_at, l.auction_round, l.auction_closed_at, l.first_bid_at, l.current_bid_paise, l.bid_count, l.display_price_paise, l.available_from, l.available_until, l.allowed_block, l.allowed_year, l.created_at, l.updated_at, l.removed_at,
@@ -301,6 +352,44 @@ func (q *Queries) BrowsePriceDesc(ctx context.Context, arg BrowsePriceDescParams
 	return items, nil
 }
 
+const closeAuctionRound = `-- name: CloseAuctionRound :one
+UPDATE listings SET auction_closed_at = now() WHERE id = $1 AND auction_closed_at IS NULL RETURNING id, seller_id, hostel, title, description, category, condition, status, bidding_enabled, price_paise, starting_price_paise, min_increment_paise, bid_ends_at, auction_round, auction_closed_at, first_bid_at, current_bid_paise, bid_count, display_price_paise, available_from, available_until, allowed_block, allowed_year, created_at, updated_at, removed_at
+`
+
+func (q *Queries) CloseAuctionRound(ctx context.Context, id uuid.UUID) (Listing, error) {
+	row := q.db.QueryRow(ctx, closeAuctionRound, id)
+	var i Listing
+	err := row.Scan(
+		&i.ID,
+		&i.SellerID,
+		&i.Hostel,
+		&i.Title,
+		&i.Description,
+		&i.Category,
+		&i.Condition,
+		&i.Status,
+		&i.BiddingEnabled,
+		&i.PricePaise,
+		&i.StartingPricePaise,
+		&i.MinIncrementPaise,
+		&i.BidEndsAt,
+		&i.AuctionRound,
+		&i.AuctionClosedAt,
+		&i.FirstBidAt,
+		&i.CurrentBidPaise,
+		&i.BidCount,
+		&i.DisplayPricePaise,
+		&i.AvailableFrom,
+		&i.AvailableUntil,
+		&i.AllowedBlock,
+		&i.AllowedYear,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.RemovedAt,
+	)
+	return i, err
+}
+
 const deletePhotos = `-- name: DeletePhotos :exec
 DELETE FROM listing_photos WHERE listing_id = $1
 `
@@ -567,6 +656,92 @@ func (q *Queries) ListBySeller(ctx context.Context, arg ListBySellerParams) ([]L
 			&i.Listing.UpdatedAt,
 			&i.Listing.RemovedAt,
 			&i.CoverUrl,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDueAuctions = `-- name: ListDueAuctions :many
+SELECT id, auction_round FROM listings
+WHERE bidding_enabled AND status = 'active' AND auction_closed_at IS NULL AND bid_ends_at <= now()
+ORDER BY bid_ends_at
+LIMIT 200
+`
+
+type ListDueAuctionsRow struct {
+	ID           uuid.UUID
+	AuctionRound int32
+}
+
+func (q *Queries) ListDueAuctions(ctx context.Context) ([]ListDueAuctionsRow, error) {
+	rows, err := q.db.Query(ctx, listDueAuctions)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListDueAuctionsRow{}
+	for rows.Next() {
+		var i ListDueAuctionsRow
+		if err := rows.Scan(&i.ID, &i.AuctionRound); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOpenAuctions = `-- name: ListOpenAuctions :many
+SELECT id, seller_id, hostel, title, description, category, condition, status, bidding_enabled, price_paise, starting_price_paise, min_increment_paise, bid_ends_at, auction_round, auction_closed_at, first_bid_at, current_bid_paise, bid_count, display_price_paise, available_from, available_until, allowed_block, allowed_year, created_at, updated_at, removed_at FROM listings
+WHERE bidding_enabled AND status = 'active' AND auction_closed_at IS NULL
+ORDER BY bid_ends_at
+LIMIT $1
+`
+
+func (q *Queries) ListOpenAuctions(ctx context.Context, rowLimit int32) ([]Listing, error) {
+	rows, err := q.db.Query(ctx, listOpenAuctions, rowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Listing{}
+	for rows.Next() {
+		var i Listing
+		if err := rows.Scan(
+			&i.ID,
+			&i.SellerID,
+			&i.Hostel,
+			&i.Title,
+			&i.Description,
+			&i.Category,
+			&i.Condition,
+			&i.Status,
+			&i.BiddingEnabled,
+			&i.PricePaise,
+			&i.StartingPricePaise,
+			&i.MinIncrementPaise,
+			&i.BidEndsAt,
+			&i.AuctionRound,
+			&i.AuctionClosedAt,
+			&i.FirstBidAt,
+			&i.CurrentBidPaise,
+			&i.BidCount,
+			&i.DisplayPricePaise,
+			&i.AvailableFrom,
+			&i.AvailableUntil,
+			&i.AllowedBlock,
+			&i.AllowedYear,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.RemovedAt,
 		); err != nil {
 			return nil, err
 		}

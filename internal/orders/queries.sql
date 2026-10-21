@@ -51,6 +51,18 @@ WHERE ((sqlc.arg(as_buyer)::boolean AND buyer_id = sqlc.arg(user_id))
 ORDER BY created_at DESC, id DESC
 LIMIT sqlc.arg(row_limit);
 
+-- name: ListDefaultedBuyers :many
+-- Buyers whose auction win for this round expired unpaid; they are skipped when the
+-- item is re-offered.
+SELECT DISTINCT buyer_id FROM orders
+WHERE listing_id = $1 AND auction_round = $2 AND kind = 'auction' AND status = 'expired';
+
+-- name: ListOverduePayments :many
+SELECT id FROM orders
+WHERE status = 'awaiting_payment' AND kind = 'auction' AND payment_due_at <= now()
+ORDER BY payment_due_at
+LIMIT 200;
+
 -- name: ListOverdueRequests :many
 SELECT id FROM orders
 WHERE status = 'requested' AND request_expires_at <= now()

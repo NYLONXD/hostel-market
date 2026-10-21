@@ -33,6 +33,7 @@ type ListingStore interface {
 
 type UserStore interface {
 	Get(ctx context.Context, id uuid.UUID) (users.User, error)
+	IncrementPaymentDefaults(ctx context.Context, q db.DBTX, id uuid.UUID) (int32, error)
 }
 
 // Notifier pushes realtime events to users (WebSocket). Optional.
@@ -53,6 +54,10 @@ type Service struct {
 	notify     Notifier
 	clock      clock.Clock
 	requestTTL time.Duration
+
+	bidders  Bidders
+	auction  AuctionConfig
+	payments PaymentGuard
 }
 
 func NewService(router *db.Router, l ListingStore, u UserStore, enq jobs.Enqueuer, n Notifier, clk clock.Clock, requestTTL time.Duration) *Service {
@@ -458,9 +463,11 @@ func (s *Service) HandleExpireRequest(ctx context.Context, t *asynq.Task) error 
 	return s.ExpireRequest(ctx, p.OrderID)
 }
 
-// HandleSweep is the safety net for lost delayed tasks: it expires every overdue request.
+// HandleSweep is the safety net for lost delayed tasks: it expires every overdue
+// request and every overdue unpaid auction order.
 func (s *Service) HandleSweep(ctx context.Context, _ *asynq.Task) error {
-	ids, err := store.New(s.db.Reader(ctx, db.Strong)).ListOverdueRequests(ctx)
+	q := store.New(s.db.Reader(ctx, db.Strong))
+	ids, err := q.ListOverdueRequests(ctx)
 	if err != nil {
 		return err
 	}
@@ -469,13 +476,26 @@ func (s *Service) HandleSweep(ctx context.Context, _ *asynq.Task) error {
 			slog.ErrorContext(ctx, "sweep: expire request failed", "order_id", id, "err", err)
 		}
 	}
+	if s.bidders == nil {
+		return nil
+	}
+	ids, err = q.ListOverduePayments(ctx)
+	if err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if err := s.ExpireAuctionPayment(ctx, id); err != nil {
+			slog.ErrorContext(ctx, "sweep: expire payment failed", "order_id", id, "err", err)
+		}
+	}
 	return nil
 }
 
 func (s *Service) RegisterJobs(w jobs.Registry) error {
 	w.Handle(TaskExpireRequest, s.HandleExpireRequest)
+	w.Handle(TaskExpirePayment, s.HandleExpirePayment)
 	w.Handle(TaskSweep, s.HandleSweep)
-	return w.Every("@every 5m", asynq.NewTask(TaskSweep, nil), asynq.Unique(4*time.Minute))
+	return w.Every("@every 2m", asynq.NewTask(TaskSweep, nil), asynq.Unique(time.Minute))
 }
 
 // --- helpers ------------------------------------------------------------------------

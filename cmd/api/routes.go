@@ -11,6 +11,7 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 
 	"hostelmarket/internal/auth"
+	"hostelmarket/internal/bidding"
 	"hostelmarket/internal/chat"
 	"hostelmarket/internal/config"
 	"hostelmarket/internal/listings"
@@ -54,6 +55,7 @@ type modules struct {
 	media    *media.Service
 	listings *listings.Service
 	orders   *orders.Service
+	bidding  *bidding.Service
 	chat     *chat.Service
 	gateway  *ws.Gateway
 }
@@ -101,19 +103,37 @@ func buildModules(d deps) (*modules, error) {
 	feed := cache.NewVersioned(d.rdb, d.cfg.Cache.FeedTTL, feedReinvalidate)
 	m.listings = listings.NewService(d.db, m.users, m.media, feed, d.clock)
 
-	m.orders = orders.NewService(d.db, m.listings, m.users, d.jobs, d.hub, d.clock, d.cfg.Market.OrderRequestTTL)
+	mk := d.cfg.Market
+	m.orders = orders.NewService(d.db, m.listings, m.users, d.jobs, d.hub, d.clock, mk.OrderRequestTTL)
 	m.listings.OnRemove(m.orders)
+
+	m.bidding = bidding.NewService(d.db, d.rdb, m.listings, m.users, m.orders, d.hub, d.jobs, d.clock, bidding.Config{
+		AntiSnipeWindow:    mk.AntiSnipeWindow,
+		AntiSnipeExtension: mk.AntiSnipeExtension,
+		MaxPaymentDefaults: int32(mk.MaxPaymentDefaults),
+	})
+	// orders and bidding need each other; they meet only through interfaces.
+	m.orders.EnableAuctions(m.bidding, orders.AuctionConfig{
+		FeeBps:             mk.PlatformFeeBps,
+		PaymentDeadline:    mk.AuctionPaymentDeadline,
+		MaxPaymentDefaults: int32(mk.MaxPaymentDefaults),
+	})
+	m.listings.SetAuctionHooks(m.bidding)
 
 	m.chat = chat.NewService(d.db, m.listings, m.users, d.hub, m.limits.message)
 	m.gateway = ws.NewGateway(d.hub, d.cfg.WSOriginPatterns, d.log)
 	chat.NewHandler(m.chat).RegisterWS(m.gateway)
+	bidding.NewHandler(m.bidding, m.limits.bid).RegisterWS(m.gateway)
 	return m, nil
 }
 
 // registerJobs attaches every module's background handlers to the worker.
 func registerJobs(w *jobs.Worker, m *modules) error {
 	w.Handle(media.TaskDeleteAssets, m.media.HandleDeleteTask)
-	return m.orders.RegisterJobs(w)
+	if err := m.orders.RegisterJobs(w); err != nil {
+		return err
+	}
+	return m.bidding.RegisterJobs(w)
 }
 
 func newHTTPHandler(d deps, m *modules) http.Handler {
@@ -154,7 +174,8 @@ func newHTTPHandler(d deps, m *modules) http.Handler {
 				r.Use(auth.RequireUser)
 				users.NewHandler(m.users).Routes(r)
 				media.NewHandler(m.media, m.users).Routes(r)
-				listings.NewHandler(m.listings, m.users, nil, d.clock).Routes(r)
+				listings.NewHandler(m.listings, m.users, m.bidding, d.clock).Routes(r)
+				bidding.NewHandler(m.bidding, m.limits.bid).Routes(r)
 				orders.NewHandler(m.orders).Routes(r)
 				chat.NewHandler(m.chat).Routes(r)
 			})

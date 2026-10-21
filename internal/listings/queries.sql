@@ -49,6 +49,31 @@ UPDATE listings SET
 WHERE id = sqlc.arg(id)
 RETURNING *;
 
+-- name: ApplyBid :one
+-- Records an accepted bid on the listing (caller holds the row lock).
+UPDATE listings SET
+  current_bid_paise = GREATEST(COALESCE(current_bid_paise, 0), sqlc.arg(amount)::bigint),
+  bid_count         = bid_count + 1,
+  first_bid_at      = COALESCE(first_bid_at, now()),
+  bid_ends_at       = GREATEST(bid_ends_at, sqlc.arg(ends_at)::timestamptz)
+WHERE id = sqlc.arg(id)
+RETURNING *;
+
+-- name: CloseAuctionRound :one
+UPDATE listings SET auction_closed_at = now() WHERE id = $1 AND auction_closed_at IS NULL RETURNING *;
+
+-- name: ListOpenAuctions :many
+SELECT * FROM listings
+WHERE bidding_enabled AND status = 'active' AND auction_closed_at IS NULL
+ORDER BY bid_ends_at
+LIMIT sqlc.arg(row_limit);
+
+-- name: ListDueAuctions :many
+SELECT id, auction_round FROM listings
+WHERE bidding_enabled AND status = 'active' AND auction_closed_at IS NULL AND bid_ends_at <= now()
+ORDER BY bid_ends_at
+LIMIT 200;
+
 -- name: InsertPhoto :exec
 INSERT INTO listing_photos (listing_id, public_id, secure_url, width, height, bytes, format, position)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8);

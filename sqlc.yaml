@@ -75,6 +75,17 @@ sql:
 
   - engine: postgresql
     schema: migrations
+    queries: internal/bidding/queries.sql
+    gen:
+      go:
+        package: store
+        out: internal/bidding/store
+        sql_package: pgx/v5
+        emit_pointers_for_null_types: true
+        emit_empty_slices: true
+
+  - engine: postgresql
+    schema: migrations
     queries: internal/chat/queries.sql
     gen:
       go:

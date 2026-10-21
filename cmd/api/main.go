@@ -85,6 +85,13 @@ func run() error {
 		return err
 	}
 
+	// Redis auction state is a cache of Postgres; rebuild it before taking bids.
+	rebuildCtx, cancelRebuild := context.WithTimeout(ctx, 30*time.Second)
+	if err := mods.bidding.RebuildState(rebuildCtx); err != nil {
+		logger.Error("auction state rebuild failed; bids will lazily reload state", "err", err)
+	}
+	cancelRebuild()
+
 	var worker *jobs.Worker
 	if cfg.RunWorkers {
 		worker = jobs.NewWorker(rdb, cfg.WorkerConcurrency, logger)
