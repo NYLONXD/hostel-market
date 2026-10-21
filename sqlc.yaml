@@ -1,0 +1,52 @@
+version: "2"
+
+# One generated package per module: each module owns its queries, all share the
+# migration-defined schema. Down migrations are ignored by sqlc automatically.
+overrides:
+  go:
+    overrides:
+      - db_type: uuid
+        go_type: github.com/google/uuid.UUID
+      - db_type: uuid
+        nullable: true
+        go_type:
+          import: github.com/google/uuid
+          type: UUID
+          pointer: true
+      - db_type: timestamptz
+        go_type: time.Time
+      - db_type: timestamptz
+        nullable: true
+        go_type:
+          type: time.Time
+          pointer: true
+      - db_type: pg_catalog.timestamptz
+        go_type: time.Time
+      - db_type: pg_catalog.timestamptz
+        nullable: true
+        go_type:
+          type: time.Time
+          pointer: true
+
+sql:
+  - engine: postgresql
+    schema: migrations
+    queries: internal/users/queries.sql
+    gen:
+      go:
+        package: store
+        out: internal/users/store
+        sql_package: pgx/v5
+        emit_pointers_for_null_types: true
+        emit_empty_slices: true
+
+  - engine: postgresql
+    schema: migrations
+    queries: internal/auth/queries.sql
+    gen:
+      go:
+        package: store
+        out: internal/auth/store
+        sql_package: pgx/v5
+        emit_pointers_for_null_types: true
+        emit_empty_slices: true

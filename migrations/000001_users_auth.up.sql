@@ -1,5 +1,3 @@
-CREATE EXTENSION IF NOT EXISTS citext;
-
 -- Shared trigger: keeps updated_at honest without every query having to set it.
 CREATE OR REPLACE FUNCTION set_updated_at() RETURNS trigger AS $$
 BEGIN
@@ -10,11 +8,11 @@ $$ LANGUAGE plpgsql;
 
 CREATE TABLE users (
   id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  email            citext NOT NULL UNIQUE,
+  email            text NOT NULL UNIQUE CHECK (email = lower(email)),   -- normalised by the app
   password_hash    text NOT NULL,
   name             text NOT NULL CHECK (char_length(name) BETWEEN 1 AND 100),
-  hostel           text NOT NULL CHECK (char_length(hostel) BETWEEN 1 AND 100),
-  block            text NOT NULL CHECK (char_length(block) BETWEEN 1 AND 20),   -- stored upper-cased
+  hostel           text NOT NULL CHECK (char_length(hostel) BETWEEN 1 AND 100),  -- stored upper-cased
+  block            text NOT NULL CHECK (char_length(block) BETWEEN 1 AND 20),    -- stored upper-cased
   year             smallint NOT NULL CHECK (year BETWEEN 1 AND 6),             -- year of study
   upi_id           text CHECK (upi_id ~ '^[a-zA-Z0-9._-]{2,256}@[a-zA-Z]{2,64}$'),
   role             text NOT NULL DEFAULT 'student' CHECK (role IN ('student', 'admin')),

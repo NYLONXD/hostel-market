@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"regexp"
 	"strings"
 
 	"github.com/go-playground/validator/v10"
@@ -22,8 +23,17 @@ func newValidator() *validator.Validate {
 		}
 		return name
 	})
+	_ = v.RegisterValidation("upi_id", func(fl validator.FieldLevel) bool {
+		return ValidUPIID(fl.Field().String())
+	})
 	return v
 }
+
+// upiIDPattern mirrors the users.upi_id CHECK constraint: handle@psp.
+var upiIDPattern = regexp.MustCompile(`^[a-zA-Z0-9._-]{2,256}@[a-zA-Z]{2,64}$`)
+
+// ValidUPIID reports whether s looks like a UPI virtual payment address.
+func ValidUPIID(s string) bool { return upiIDPattern.MatchString(s) }
 
 // Validator exposes the shared instance so modules can register custom rules at startup.
 func Validator() *validator.Validate { return validate }
@@ -85,6 +95,8 @@ func fieldMessage(fe validator.FieldError) string {
 		return "must not be set here"
 	case "email":
 		return "must be a valid email address"
+	case "upi_id":
+		return "must be a UPI ID like name@bank"
 	case "uuid", "uuid4":
 		return "must be a UUID"
 	case "oneof":

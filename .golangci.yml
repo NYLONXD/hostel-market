@@ -1,0 +1,31 @@
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - errorlint
+    - misspell
+    - nilerr
+    - noctx
+    - rowserrcheck
+    - unconvert
+    - usestdlibvars
+  exclusions:
+    generated: lax
+    rules:
+      # Deferred Close/Rollback errors are not actionable.
+      - linters: [errcheck]
+        source: "defer .*\\.(Close|Rollback)\\("
+      # httptest.NewRequest is the idiomatic way to build test requests.
+      - linters: [noctx]
+        path: _test\.go
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - hostelmarket

@@ -3,11 +3,14 @@ package httpx
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
@@ -51,6 +54,39 @@ func newRequestID() string {
 	return hex.EncodeToString(b[:])
 }
 
+// ClientIP resolves the caller's IP once per request (must run after RequestID).
+// Proxy headers are honoured only when trustProxy is set; otherwise anyone could
+// spoof them to dodge IP rate limits.
+func ClientIP(trustProxy bool) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if info := reqctx.From(r.Context()); info != nil {
+				info.ClientIP = resolveClientIP(r, trustProxy)
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func resolveClientIP(r *http.Request, trustProxy bool) string {
+	if trustProxy {
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			first, _, _ := strings.Cut(xff, ",")
+			if ip := net.ParseIP(strings.TrimSpace(first)); ip != nil {
+				return ip.String()
+			}
+		}
+		if ip := net.ParseIP(strings.TrimSpace(r.Header.Get("X-Real-IP"))); ip != nil {
+			return ip.String()
+		}
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
 // Recoverer turns a panic into a logged 500 instead of a dropped connection.
 func Recoverer(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -59,7 +95,7 @@ func Recoverer(next http.Handler) http.Handler {
 			if rec == nil {
 				return
 			}
-			if rec == http.ErrAbortHandler {
+			if err, ok := rec.(error); ok && errors.Is(err, http.ErrAbortHandler) {
 				panic(rec) // let net/http abort the response as intended
 			}
 			slog.ErrorContext(r.Context(), "panic", "panic", fmt.Sprint(rec), "stack", string(debug.Stack()))

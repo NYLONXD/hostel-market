@@ -29,6 +29,9 @@ type Config struct {
 	LogLevel        slog.Level
 	ShutdownTimeout time.Duration
 	RunWorkers      bool // run the asynq worker + scheduler in this process
+	// TrustProxyHeaders makes X-Forwarded-For / X-Real-IP the client IP. Enable only
+	// behind a proxy that overwrites them, or clients can spoof their IP.
+	TrustProxyHeaders bool
 
 	DB         DBConfig
 	RedisURL   string
@@ -124,6 +127,8 @@ func load(getenv func(string) string) (Config, error) {
 		LogLevel:        r.logLevel("LOG_LEVEL", slog.LevelInfo),
 		ShutdownTimeout: r.duration("SHUTDOWN_TIMEOUT", 15*time.Second),
 		RunWorkers:      r.bool("RUN_WORKERS", true),
+
+		TrustProxyHeaders: r.bool("TRUST_PROXY_HEADERS", false),
 		DB: DBConfig{
 			PrimaryURL: r.required("DATABASE_URL_PRIMARY"),
 			ReplicaURL: r.str("DATABASE_URL_REPLICA", ""),
@@ -154,9 +159,10 @@ func load(getenv func(string) string) (Config, error) {
 			FeedTTL:        r.duration("FEED_CACHE_TTL", 30*time.Second),
 		},
 		RateLimit: RateLimitConfig{
-			Global:   r.limit("RATE_LIMIT_GLOBAL", Limit{120, time.Minute}),
-			Login:    r.limit("RATE_LIMIT_LOGIN", Limit{5, 15 * time.Minute}),
-			Register: r.limit("RATE_LIMIT_REGISTER", Limit{5, time.Hour}),
+			Global: r.limit("RATE_LIMIT_GLOBAL", Limit{120, time.Minute}),
+			Login:  r.limit("RATE_LIMIT_LOGIN", Limit{5, 15 * time.Minute}),
+			// Per IP. A whole hostel often shares one NAT IP, so this can't be tiny.
+			Register: r.limit("RATE_LIMIT_REGISTER", Limit{20, time.Hour}),
 			Bid:      r.limit("RATE_LIMIT_BID", Limit{20, time.Minute}),
 			Message:  r.limit("RATE_LIMIT_MESSAGE", Limit{30, time.Minute}),
 		},

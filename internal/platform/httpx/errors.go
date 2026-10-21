@@ -17,6 +17,7 @@ type Error struct {
 	Code    string
 	Message string
 	Details any
+	Headers map[string]string // extra response headers, e.g. Retry-After
 	Err     error
 }
 
@@ -89,6 +90,9 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 	}
 	if apiErr.Status >= 500 {
 		slog.ErrorContext(r.Context(), "request failed", "code", apiErr.Code, "err", err)
+	}
+	for k, v := range apiErr.Headers {
+		w.Header().Set(k, v)
 	}
 	WriteJSON(w, apiErr.Status, errorEnvelope{Error: errorBody{
 		Code:      apiErr.Code,

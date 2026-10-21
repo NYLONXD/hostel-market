@@ -45,7 +45,9 @@ lint: ## Run golangci-lint
 tidy: ## Tidy go.mod / go.sum
 	$(GO) mod tidy
 
+# Versions pinned to ones that build with Go 1.25. sqlc needs cgo when built from
+# source; on Windows download the release binary instead (see README).
 tools: ## Install migrate, sqlc and golangci-lint into GOPATH/bin
-	$(GO) install -tags postgres github.com/golang-migrate/migrate/v4/cmd/migrate@latest
-	$(GO) install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
-	$(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+	$(GO) install -tags postgres github.com/golang-migrate/migrate/v4/cmd/migrate@v4.19.1
+	$(GO) install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1
+	$(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2

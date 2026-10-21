@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"hostelmarket/internal/config"
+	"hostelmarket/internal/platform/clock"
 	"hostelmarket/internal/platform/db"
 	"hostelmarket/internal/platform/logx"
 	platformredis "hostelmarket/internal/platform/redis"
@@ -65,13 +66,18 @@ func run() error {
 		pools: pools,
 		rdb:   rdb,
 		db:    db.NewRouter(pools, db.NewRedisRecentWrites(rdb, cfg.Cache.RecentWriteTTL), logger),
+		clock: clock.System{},
+	}
+	mods, err := buildModules(d)
+	if err != nil {
+		return err
 	}
 
 	// No server-wide Read/WriteTimeout: they would also apply to hijacked WebSocket
 	// connections. REST routes get a per-request timeout in the router instead.
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           newHTTPHandler(d),
+		Handler:           newHTTPHandler(d, mods),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       120 * time.Second,
 		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelWarn),

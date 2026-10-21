@@ -14,6 +14,7 @@ type ctxKey struct{}
 // fills in UserID deep in the chain and the outer access-log middleware still sees it.
 type Info struct {
 	RequestID string
+	ClientIP  string
 	UserID    uuid.UUID // uuid.Nil when anonymous
 }
 
@@ -32,6 +33,13 @@ func From(ctx context.Context) *Info {
 func RequestID(ctx context.Context) string {
 	if info := From(ctx); info != nil {
 		return info.RequestID
+	}
+	return ""
+}
+
+func ClientIP(ctx context.Context) string {
+	if info := From(ctx); info != nil {
+		return info.ClientIP
 	}
 	return ""
 }
