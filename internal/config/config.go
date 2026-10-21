@@ -33,15 +33,19 @@ type Config struct {
 	// behind a proxy that overwrites them, or clients can spoof their IP.
 	TrustProxyHeaders bool
 
-	DB         DBConfig
-	RedisURL   string
-	JWT        JWTConfig
-	Auth       AuthConfig
-	Market     MarketConfig
-	Cache      CacheConfig
-	RateLimit  RateLimitConfig
-	Cloudinary CloudinaryConfig
-	Payments   PaymentsConfig
+	DB       DBConfig
+	RedisURL string
+	// RedisPoolSize caps connections per process (hosted Redis plans limit them).
+	// Pub/sub listeners use one extra dedicated connection.
+	RedisPoolSize     int
+	WorkerConcurrency int
+	JWT               JWTConfig
+	Auth              AuthConfig
+	Market            MarketConfig
+	Cache             CacheConfig
+	RateLimit         RateLimitConfig
+	Cloudinary        CloudinaryConfig
+	Payments          PaymentsConfig
 }
 
 type DBConfig struct {
@@ -134,7 +138,9 @@ func load(getenv func(string) string) (Config, error) {
 			ReplicaURL: r.str("DATABASE_URL_REPLICA", ""),
 			MaxConns:   int32(r.int("DB_MAX_CONNS", 20)),
 		},
-		RedisURL: r.required("REDIS_URL"),
+		RedisURL:          r.required("REDIS_URL"),
+		RedisPoolSize:     r.int("REDIS_POOL_SIZE", 10),
+		WorkerConcurrency: r.int("WORKER_CONCURRENCY", 4),
 		JWT: JWTConfig{
 			AccessSecret:  []byte(r.required("JWT_ACCESS_SECRET")),
 			RefreshSecret: []byte(r.required("JWT_REFRESH_SECRET")),
@@ -223,6 +229,12 @@ func (c *Config) validate(r *reader) {
 	}
 	if c.DB.MaxConns < 1 {
 		r.fail("DB_MAX_CONNS must be >= 1")
+	}
+	if c.RedisPoolSize < 2 {
+		r.fail("REDIS_POOL_SIZE must be >= 2")
+	}
+	if c.WorkerConcurrency < 1 {
+		r.fail("WORKER_CONCURRENCY must be >= 1")
 	}
 	if c.Market.MaxPaymentDefaults < 1 {
 		r.fail("MAX_PAYMENT_DEFAULTS must be >= 1")

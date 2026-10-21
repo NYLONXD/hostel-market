@@ -16,6 +16,7 @@ import (
 	"hostelmarket/internal/config"
 	"hostelmarket/internal/platform/clock"
 	"hostelmarket/internal/platform/db"
+	"hostelmarket/internal/platform/jobs"
 	"hostelmarket/internal/platform/logx"
 	platformredis "hostelmarket/internal/platform/redis"
 )
@@ -55,22 +56,37 @@ func run() error {
 		logger.Info("no read replica configured; all reads use the primary")
 	}
 
-	rdb, err := platformredis.Open(ctx, cfg.RedisURL)
+	rdb, err := platformredis.Open(ctx, cfg.RedisURL, cfg.RedisPoolSize)
 	if err != nil {
 		return fmt.Errorf("redis: %w", err)
 	}
 	defer rdb.Close()
+
+	jobClient := jobs.NewClient(rdb)
+	defer jobClient.Close()
 
 	d := deps{
 		cfg:   cfg,
 		pools: pools,
 		rdb:   rdb,
 		db:    db.NewRouter(pools, db.NewRedisRecentWrites(rdb, cfg.Cache.RecentWriteTTL), logger),
+		jobs:  jobClient,
 		clock: clock.System{},
+		log:   logger,
 	}
 	mods, err := buildModules(d)
 	if err != nil {
 		return err
+	}
+
+	var worker *jobs.Worker
+	if cfg.RunWorkers {
+		worker = jobs.NewWorker(rdb, cfg.WorkerConcurrency, logger)
+		registerJobs(worker, mods)
+		if err := worker.Start(); err != nil {
+			return err
+		}
+		logger.Info("job worker started", "concurrency", cfg.WorkerConcurrency)
 	}
 
 	// No server-wide Read/WriteTimeout: they would also apply to hijacked WebSocket
@@ -101,8 +117,13 @@ func run() error {
 	logger.Info("shutting down", "timeout", cfg.ShutdownTimeout)
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancel()
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		return fmt.Errorf("http shutdown: %w", err)
+	// Stop taking requests first, then let in-flight jobs finish, then close pools (defers).
+	httpErr := srv.Shutdown(shutdownCtx)
+	if worker != nil {
+		worker.Shutdown()
+	}
+	if httpErr != nil {
+		return fmt.Errorf("http shutdown: %w", httpErr)
 	}
 	logger.Info("shutdown complete")
 	return nil

@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
 const maxBodyBytes = 1 << 20
@@ -42,8 +43,11 @@ func decodeError(err error) error {
 		syntaxErr *json.SyntaxError
 		typeErr   *json.UnmarshalTypeError
 		maxErr    *http.MaxBytesError
+		timeErr   *time.ParseError
 	)
 	switch {
+	case errors.As(err, &timeErr):
+		return BadRequest("invalid_json", "invalid timestamp; use RFC 3339, e.g. 2026-10-21T18:30:00+05:30")
 	case errors.Is(err, io.EOF):
 		return BadRequest("invalid_json", "request body is empty")
 	case errors.As(err, &syntaxErr), errors.Is(err, io.ErrUnexpectedEOF):

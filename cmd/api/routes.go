@@ -12,15 +12,24 @@ import (
 
 	"hostelmarket/internal/auth"
 	"hostelmarket/internal/config"
+	"hostelmarket/internal/listings"
+	"hostelmarket/internal/media"
+	"hostelmarket/internal/platform/cache"
 	"hostelmarket/internal/platform/clock"
 	"hostelmarket/internal/platform/db"
 	"hostelmarket/internal/platform/httpx"
+	"hostelmarket/internal/platform/jobs"
 	"hostelmarket/internal/platform/ratelimit"
 	"hostelmarket/internal/users"
 )
 
-// restTimeout bounds every non-WebSocket request.
-const restTimeout = 30 * time.Second
+const (
+	// restTimeout bounds every non-WebSocket request.
+	restTimeout = 30 * time.Second
+	// feedReinvalidate is the second feed-cache bump after a write, covering a reader
+	// that refilled the cache from a replica that hadn't caught up yet.
+	feedReinvalidate = 2 * time.Second
+)
 
 // deps is the shared infrastructure every module is wired from.
 type deps struct {
@@ -28,14 +37,18 @@ type deps struct {
 	pools *db.Pools
 	rdb   *goredis.Client
 	db    *db.Router
+	jobs  *jobs.Client
 	clock clock.Clock
+	log   *slog.Logger
 }
 
 // modules holds the wired domain modules.
 type modules struct {
-	limits limits
-	users  *users.Service
-	auth   *auth.Service
+	limits   limits
+	users    *users.Service
+	auth     *auth.Service
+	media    *media.Service
+	listings *listings.Service
 }
 
 type limits struct {
@@ -68,7 +81,24 @@ func buildModules(d deps) (*modules, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	cld, err := media.NewCloudinary(d.cfg.Cloudinary)
+	if err != nil {
+		return nil, err
+	}
+	if cld == nil {
+		d.log.Warn("Cloudinary not configured; photo uploads are disabled")
+	}
+	m.media = media.NewService(d.cfg.Cloudinary, cld, d.jobs, d.clock)
+
+	feed := cache.NewVersioned(d.rdb, d.cfg.Cache.FeedTTL, feedReinvalidate)
+	m.listings = listings.NewService(d.db, m.users, m.media, feed, d.clock)
 	return m, nil
+}
+
+// registerJobs attaches every module's background handlers to the worker.
+func registerJobs(w *jobs.Worker, m *modules) {
+	w.Handle(media.TaskDeleteAssets, m.media.HandleDeleteTask)
 }
 
 func newHTTPHandler(d deps, m *modules) http.Handler {
@@ -92,8 +122,8 @@ func newHTTPHandler(d deps, m *modules) http.Handler {
 		r.Use(auth.Identify(m.auth, auth.FromHeader))
 		r.Use(m.limits.global.Middleware(ratelimit.ByUserOrIP))
 
-		// REST endpoints. (WebSocket routes will mount outside this group: a
-		// request timeout would cut long-lived connections.)
+		// REST endpoints. (WebSocket routes mount outside this group: a request
+		// timeout would cut long-lived connections.)
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.Timeout(restTimeout))
 
@@ -102,6 +132,8 @@ func newHTTPHandler(d deps, m *modules) http.Handler {
 			r.Group(func(r chi.Router) {
 				r.Use(auth.RequireUser)
 				users.NewHandler(m.users).Routes(r)
+				media.NewHandler(m.media, m.users).Routes(r)
+				listings.NewHandler(m.listings, m.users, nil, d.clock).Routes(r)
 			})
 		})
 	})

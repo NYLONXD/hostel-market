@@ -70,7 +70,6 @@ type Listing struct {
 	AvailableUntil     pgtype.Time
 	AllowedBlock       *string
 	AllowedYear        *int16
-	SearchTsv          interface{}
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
 	RemovedAt          *time.Time

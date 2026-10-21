@@ -9,11 +9,15 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 )
 
-// Open parses a redis:// or rediss:// URL, connects and pings.
-func Open(ctx context.Context, url string) (*goredis.Client, error) {
+// Open parses a redis:// or rediss:// (TLS, e.g. Redis Cloud) URL, connects and pings.
+// poolSize <= 0 keeps go-redis's default.
+func Open(ctx context.Context, url string, poolSize int) (*goredis.Client, error) {
 	opts, err := goredis.ParseURL(url)
 	if err != nil {
 		return nil, fmt.Errorf("parse redis url: %w", err)
+	}
+	if poolSize > 0 {
+		opts.PoolSize = poolSize
 	}
 	client := goredis.NewClient(opts)
 	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)

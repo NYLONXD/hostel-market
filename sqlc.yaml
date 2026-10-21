@@ -50,3 +50,14 @@ sql:
         sql_package: pgx/v5
         emit_pointers_for_null_types: true
         emit_empty_slices: true
+
+  - engine: postgresql
+    schema: migrations
+    queries: internal/listings/queries.sql
+    gen:
+      go:
+        package: store
+        out: internal/listings/store
+        sql_package: pgx/v5
+        emit_pointers_for_null_types: true
+        emit_empty_slices: true

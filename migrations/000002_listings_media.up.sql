@@ -1,3 +1,11 @@
+-- Full-text search document for a listing. Queries must call this same function so the
+-- planner can use the expression index below.
+CREATE FUNCTION listing_search_vector(title text, description text) RETURNS tsvector
+  LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
+    SELECT setweight(to_tsvector('english', title), 'A') ||
+           setweight(to_tsvector('english', description), 'B')
+  $$;
+
 CREATE TABLE listings (
   id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   seller_id            uuid NOT NULL REFERENCES users (id),
@@ -28,10 +36,6 @@ CREATE TABLE listings (
   allowed_block        text,
   allowed_year         smallint CHECK (allowed_year BETWEEN 1 AND 6),
 
-  search_tsv           tsvector GENERATED ALWAYS AS (
-                         setweight(to_tsvector('english', title), 'A') ||
-                         setweight(to_tsvector('english', description), 'B')) STORED,
-
   created_at           timestamptz NOT NULL DEFAULT now(),
   updated_at           timestamptz NOT NULL DEFAULT now(),
   removed_at           timestamptz,
@@ -50,7 +54,7 @@ CREATE TABLE listings (
 CREATE INDEX listings_feed_new ON listings (hostel, created_at DESC, id DESC) WHERE status = 'active';
 CREATE INDEX listings_feed_category ON listings (hostel, category, created_at DESC, id DESC) WHERE status = 'active';
 CREATE INDEX listings_feed_price ON listings (hostel, display_price_paise, id) WHERE status = 'active';
-CREATE INDEX listings_search ON listings USING gin (search_tsv);
+CREATE INDEX listings_search ON listings USING gin (listing_search_vector(title, description));
 CREATE INDEX listings_seller ON listings (seller_id, created_at DESC);
 CREATE INDEX listings_open_auctions ON listings (bid_ends_at)
   WHERE bidding_enabled AND status = 'active' AND auction_closed_at IS NULL;
