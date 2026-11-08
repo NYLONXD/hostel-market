@@ -1,0 +1,80 @@
+@import "tailwindcss";
+
+/* Design tokens. Light = "hostel notice board": warm paper, dark ink, marigold tags. */
+:root {
+  --paper: #f6f1e7;
+  --card: #fffdf8;
+  --ink: #1d2621;
+  --muted: #5f6a63;
+  --line: #e2d9c8;
+  --brand: #1f5c4a;
+  --brand-ink: #ffffff;
+  --brand-soft: #dcebe4;
+  --tag: #f2b544;
+  --tag-ink: #3a2a06;
+  --danger: #b3261e;
+  --danger-soft: #f9e1de;
+  --ok: #1e7a43;
+  --ok-soft: #dcf1e3;
+  --warn-soft: #fbefd3;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #121614;
+    --card: #1a201d;
+    --ink: #e9ece8;
+    --muted: #9aa59e;
+    --line: #2c3530;
+    --brand: #5fbf9b;
+    --brand-ink: #0d1411;
+    --brand-soft: #1d3a30;
+    --tag: #f2b544;
+    --tag-ink: #2a1e04;
+    --danger: #ff8a80;
+    --danger-soft: #3a1d1b;
+    --ok: #7fd6a0;
+    --ok-soft: #173325;
+    --warn-soft: #3a2f16;
+  }
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-card: var(--card);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-brand: var(--brand);
+  --color-brand-ink: var(--brand-ink);
+  --color-brand-soft: var(--brand-soft);
+  --color-tag: var(--tag);
+  --color-tag-ink: var(--tag-ink);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-warn-soft: var(--warn-soft);
+  --font-sans: var(--font-body);
+  --font-display: var(--font-heading);
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+/* Price tag sticker used on cards and the listing page. */
+.price-tag {
+  background: var(--tag);
+  color: var(--tag-ink);
+  clip-path: polygon(10px 0, 100% 0, 100% 100%, 10px 100%, 0 50%);
+  padding: 0.2rem 0.6rem 0.2rem 1rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}

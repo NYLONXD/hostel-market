@@ -3,13 +3,22 @@
 .env.*
 !.env.example
 
-# Build output
-/bin/
-/tmp/
-*.exe
-*.test
-*.out
-coverage.*
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+backend/uploads/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+
+# graphify knowledge graph (rebuild with: graphify update .)
+graphify-out/
 
 # Editors / OS
 .idea/

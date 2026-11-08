@@ -1,0 +1,15 @@
+fastapi==0.162.2
+uvicorn[standard]==0.54.0
+psycopg[binary,pool]==3.3.8
+pydantic==2.14.3
+pydantic-settings==2.16.2
+email-validator==2.3.0
+PyJWT==2.15.1
+bcrypt==5.0.0
+redis==8.1.0
+cloudinary==1.47.0
+python-multipart==0.0.33
+
+# tests
+pytest==9.2.0
+httpx==0.28.1
