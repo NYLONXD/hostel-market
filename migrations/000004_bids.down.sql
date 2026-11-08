@@ -1,2 +1,0 @@
-ALTER TABLE orders DROP COLUMN IF EXISTS winning_bid_id;
-DROP TABLE IF EXISTS bids;
