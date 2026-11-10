@@ -6,7 +6,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, StringConstraints, model_validator
 
-UPI_PATTERN = r"^[a-zA-Z0-9._-]{2,256}@[a-zA-Z]{2,64}$"
+UPI_PATTERN = r"^[a-zA-Z0-9._-]{2,255}@[a-zA-Z]{2,64}$"
 
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
 UpiId = Annotated[str, StringConstraints(strip_whitespace=True, pattern=UPI_PATTERN, max_length=100)]

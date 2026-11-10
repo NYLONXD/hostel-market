@@ -38,7 +38,7 @@ CREATE TABLE users (
   full_name     varchar(100) NOT NULL CHECK (length(trim(full_name)) > 0),
   block_id      integer      NOT NULL REFERENCES blocks (block_id) ON DELETE RESTRICT,
   year_of_study smallint     NOT NULL CHECK (year_of_study BETWEEN 1 AND 6),
-  upi_id        varchar(100) CHECK (upi_id ~ '^[a-zA-Z0-9._-]{2,256}@[a-zA-Z]{2,64}$'),
+  upi_id        varchar(100) CHECK (upi_id ~ '^[a-zA-Z0-9._-]{2,255}@[a-zA-Z]{2,64}$'),
   role          varchar(10)  NOT NULL DEFAULT 'student' CHECK (role IN ('student', 'admin')),
   is_verified   boolean      NOT NULL DEFAULT false,
   verified_at   timestamptz,

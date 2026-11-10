@@ -171,7 +171,7 @@ function Feed({ user }: { user: User }) {
               Clear filters
             </Button>
           ) : (
-            "Be the first to sell something in your hostel."
+            "Be the first to sell a late-night snack in your hostel."
           )}
         </Empty>
       )}

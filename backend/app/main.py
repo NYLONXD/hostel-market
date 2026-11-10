@@ -51,7 +51,7 @@ async def lifespan(_: FastAPI):
 
 def create_app() -> FastAPI:
     s = get_settings()
-    app = FastAPI(title="Hostel Market API", version="2.0.0", lifespan=lifespan)
+    app = FastAPI(title="Midnight Munchies API", version="2.0.0", lifespan=lifespan)
     errors.install(app)
     app.add_middleware(
         CORSMiddleware,

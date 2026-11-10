@@ -7,9 +7,9 @@ import { useAuth } from "@/components/AuthProvider";
 import { LinkButton } from "@/components/ui";
 
 const steps = [
-  { t: "List it", d: "Snap a photo, set a price, and choose who can buy: your block, your year, or the whole hostel." },
-  { t: "Get a request", d: "Hostel-mates send buy requests. Accept one; the rest wait in line in case it falls through." },
-  { t: "Meet & pay", d: "Pay by UPI or cash when you meet. Both of you confirm each step, so nothing gets lost." },
+  { t: "List your stash", d: "Got extra Maggi, chips or cold drinks? Set a price and the hours you're awake to sell." },
+  { t: "Get a request", d: "Hungry hostel-mates send requests. Accept one; the rest wait in line in case it falls through." },
+  { t: "Hand over & pay", d: "Pay by UPI or cash at the door. Both of you confirm each step, so nothing gets lost." },
 ];
 
 export default function Home() {
@@ -26,11 +26,11 @@ export default function Home() {
         <div className="space-y-5">
           <p className="text-sm font-semibold uppercase tracking-widest text-brand">For hostel residents only</p>
           <h1 className="font-display text-4xl font-extrabold leading-tight sm:text-5xl">
-            Sell your old books, cycles and kettles to the people down the corridor.
+            Craving snacks at 2 AM? Someone down the corridor has them.
           </h1>
           <p className="max-w-xl text-lg text-muted">
-            Hostel Market is a noticeboard for your hostel: every listing stays inside your hostel, buyers are
-            verified students, and every deal is tracked from request to handover.
+            Midnight Munchies is a late-night snack board for your hostel: every listing stays inside your hostel,
+            buyers are verified students, and every order is tracked from request to handover.
           </p>
           <div className="flex flex-wrap gap-3">
             <LinkButton href="/register">Create an account</LinkButton>
@@ -41,9 +41,9 @@ export default function Home() {
         </div>
         <div className="relative hidden h-72 md:block" aria-hidden>
           {[
-            ["Engineering Mathematics", "₹350", "-rotate-3 left-4 top-2"],
-            ["Hero Sprint cycle", "₹2,500", "rotate-2 right-2 top-24"],
-            ["Electric kettle 1.5L", "₹400", "-rotate-1 left-12 bottom-0"],
+            ["Maggi Masala x2", "₹30", "-rotate-3 left-4 top-2"],
+            ["Lay's Magic Masala", "₹20", "rotate-2 right-2 top-24"],
+            ["Cold Coffee (chilled)", "₹40", "-rotate-1 left-12 bottom-0"],
           ].map(([t, p, pos]) => (
             <div key={t} className={`absolute w-60 rounded-lg border border-line bg-card p-4 shadow-md ${pos}`}>
               <div className="mb-3 h-2 w-10 rounded bg-tag" />

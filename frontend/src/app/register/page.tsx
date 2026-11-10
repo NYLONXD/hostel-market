@@ -45,7 +45,7 @@ export default function RegisterPage() {
 
   return (
     <div className="mx-auto max-w-lg">
-      <h1 className="mb-2 font-display text-3xl font-bold">Join your hostel market</h1>
+      <h1 className="mb-2 font-display text-3xl font-bold">Join Midnight Munchies</h1>
       <p className="mb-6 text-sm text-muted">
         Sign up with your college email to be verified instantly. Other emails are verified by a hostel admin.
       </p>

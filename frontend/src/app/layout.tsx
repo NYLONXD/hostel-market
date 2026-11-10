@@ -12,8 +12,8 @@ const heading = Bricolage_Grotesque({ variable: "--font-heading", subsets: ["lat
 const body = Inter({ variable: "--font-body", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Hostel Market",
-  description: "Buy and sell used books, cycles and appliances inside your hostel.",
+  title: "Midnight Munchies",
+  description: "Late-night snacks from the people down your hostel corridor.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -30,7 +30,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             <Suspense fallback={<Spinner />}>{children}</Suspense>
           </main>
           <footer className="border-t border-line py-6 text-center text-xs text-muted">
-            Hostel Market · DBMS mini project · FastAPI + PostgreSQL + Next.js
+            Midnight Munchies · DBMS mini project · FastAPI + PostgreSQL + Next.js
           </footer>
         </AuthProvider>
       </body>
